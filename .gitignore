@@ -1,0 +1,16 @@
+# Environment files
+.env
+
+# Virtual environment
+aienv/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE files
+.vscode/
+
+# Mac system files
+.DS_Store
