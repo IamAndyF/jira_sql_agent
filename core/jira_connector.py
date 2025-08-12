@@ -1,8 +1,7 @@
 from jira import JIRA, JIRAError
 from core.config import JiraConfig
 
-from logger import setup_logger
-logger = setup_logger(__name__)
+from logger import logger
 
 class JiraConnector:
     def __init__(self, jira_config: JiraConfig):

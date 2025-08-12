@@ -4,8 +4,7 @@ from psycopg2.extras import RealDictCursor
 from core.config import DATABASE_URL, SAFE_DATABASE_URL
 from contextlib import contextmanager
 
-from logger import setup_logger
-logger = setup_logger(__name__)
+from logger import logger
 
 class DatabaseManager:
     @contextmanager

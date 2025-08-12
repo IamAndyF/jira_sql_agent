@@ -1,8 +1,8 @@
-from jira import JIRA
+from jira import JIRA, JIRAError
 import openai
 from openai import OpenAIError
-from core.config import JiraConfig, OpenAIConfig
 from langchain.prompts import PromptTemplate
+from logger import logger
 
 class JiraAgent:
     def __init__(self, jira_client: JIRA, project_key, openai_api_key):
@@ -15,6 +15,16 @@ class JiraAgent:
         if jql is None:
             jql = f"project={self.jira_project_key} AND status='To Do'"
         return self.jira.search_issues(jql)
+    
+    def post_comment(self, issue_key, comment):
+        try:
+            self.jira.add_comment(issue_key, comment)
+            logger.info(f"Comment posted to issue {issue_key}")
+        except JIRAError as e:
+            logger.error(f"Failed to post comment to issue {issue_key}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error posting comment to issue {issue_key}: {e}")
+
         
     def analyse_issues(self, issue, db_schema):    
         formatted_issue = "\n".join([f"{issue.key}: {issue.fields.summary}\nDescription: {issue.fields.description or 'No description'}"])
