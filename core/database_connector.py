@@ -56,12 +56,3 @@ class DatabaseManager:
             schema.setdefault(table, []).append((column, dtype))
         return schema
 
-# testing ********************************
-# python -m core.database_connector
-# db = DatabaseManager()
-# try:
-#     with db.get_connection() as connection:
-#         logger.info(f"Database connection established successfully at {SAFE_DATABASE_URL}")
-#         pass
-# except Exception as e:
-#     logger.error(f"Failed to connect to the database: {e}")

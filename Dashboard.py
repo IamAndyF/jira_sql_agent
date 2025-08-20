@@ -27,7 +27,7 @@ with tab1:
                 st.markdown(issue["analysis"])
                 if st.button(f"Select {issue['key']} for processing", key=f"btn-{issue['key']}"):
                     with st.spinner(f"Running SQL task for {issue['key']}..."):
-                        output = run_sql_task(issue['key'])
+                        output = run_sql_task(issue['key'], issue['summary'])
                         st.code(output["sql"], language="sql")
                         st.write(output["results"])
                     st.success(f"{issue['key']} selected for processing.")

@@ -26,51 +26,29 @@ class JiraAgent:
             logger.error(f"Unexpected error posting comment to issue {issue_key}: {e}")
 
         
-    def analyse_issues(self, issue, db_schema):    
+    def analyse_issues(self, issue):    
         formatted_issue = "\n".join([f"{issue.key}: {issue.fields.summary}\nDescription: {issue.fields.description or 'No description'}"])
 
-        prompt = PromptTemplate(
-            input_variables=["db_schema", "issue"],
-            template="""
-            You are a senior database developer and SQL expert with 10+ years of experience in enterprise data systems.
-
+        prompt = f"""
+        
             ## Your Role & Constraints
             - Evaluate Jira issues for SQL implementation feasibility
-            - You can ONLY work with existing database schema (no DDL operations allowed)
             - Focus on data retrieval, filtering, aggregation, and reporting tasks
-            - Reject any requests requiring schema modifications, user management, or system administration
-
-            ## Database Schema
-            {db_schema}
-
-            ## Security & Performance Constraints
-            - Maximum query execution time: 30 seconds
-            - No operations on tables with >10M rows without explicit approval
-            - No schema modifications (CREATE, ALTER, DROP)
-            - Read-only access only
+            - Reject any requests requiring schema modifications (CREATE, ALTER, DROP), user management, or system administration
 
             ## Jira Issues to Evaluate
-            {issues}
-
-            ## Complexity Assessment Criteria
-            Simple tasks (ACCEPT):
-            - Single table queries with basic WHERE clauses
-            - Simple JOINs (2-3 tables max)
-            - Basic aggregations (COUNT, SUM, AVG)
-            - Standard reporting queries
-            - Data exports with filtering
-
-            Complex tasks (REJECT):
-            - Multi-step data transformations
-            - Complex subqueries with multiple CTEs
-            - Cross-database operations
-            - Performance-critical queries requiring optimization
-            - Tasks requiring >5 table JOINs
+            {formatted_issue}
 
             ## Vagueness Assessment
             **Specific field names or column names mentioned** (not just "data", "information", "reports")
             **Exact output format stated** (CSV export, dashboard view, summary table, etc.)
             **Clear business metrics or aggregations defined** (COUNT of X, SUM of Y, etc.)
+
+            ## Edge Cases to Reject
+            - Requests that involve any schema modifications (CREATE, ALTER, DROP)
+            - Tasks requiring data from external systems
+            - Any mention of user permissions, access control, or system administration
+            - Real-time processing or streaming data requirements
 
             **CRITICAL EXAMPLES OF REQUESTS THAT MUST BE REJECTED:**
             - "Generate Interaction Reports" (no fields specified, no output format)
@@ -85,49 +63,35 @@ class JiraAgent:
             - **Required Information:** [list what stakeholder needs to provide]
 
             ## Required Output Format
-            For each issue, provide:
+            For each issue, return in this EXACT format below:
 
             **Issue Key: [JIRA-XXXX] - [Jira-Summary] **
             - **Feasible:** Yes/No
             - **Confidence:** High/Medium/Low
             - **Complexity Score:** 1-10 (where 1=simple SELECT, 10=complex multi-table analysis)
-            - **Reasoning:** [2-3 sentences explaining your decision based on schema analysis]
-            - **Required Tables/Fields:** [if feasible, list specific tables.columns needed]
+            - **Reasoning:** [2-3 sentences explaining your decision]
             - **Missing Information:** [if vague, list what needs clarification]
-            - **Estimated Query Complexity:** [Simple SELECT / JOIN operation / Aggregation / etc.]
             - **Potential Risks:** [any performance or data access concerns]
-            - **Recommended Priority:** [Low/Medium/High based on business impact vs complexity]
-
-            ## Decision Framework
-
-            1. First check that the request is not vague
-            2. Verify all required data exists in the provided schema
-            3. Assess if relationships between tables are clear and properly defined
-            4. Evaluate query complexity against your capabilities
-            5. Consider potential performance implications
-            6. Confirm no schema modifications are required
-
-            ## Edge Cases to Reject
-            - Requests that involve any schema modifications (CREATE, ALTER, DROP)
-            - Tasks requiring data from external systems not in schema
-            - Any mention of user permissions, access control, or system administration
-            - Real-time processing or streaming data requirements
 
             Be conservative in your assessments. When in doubt, reject and explain why the task exceeds simple SQL operations.
             """
-        )
         
-        full_prompt = prompt.format(db_schema=db_schema, issues=formatted_issue)
+
+        role_prompt = f"""
+            You are an expert AI backend engineer and SQL data extraction specialist.
+            Your job is to read Jira tickets and determine if they describe a task
+            that involves extracting and/or transforming data from SQL databases.
+        """
         client = openai.Client(api_key=self.openai_api_key)
 
         try: 
             response = client.chat.completions.create(
                 model = 'gpt-3.5-turbo',
                 messages = [
-                    {"role": "system", "content": "You are an AI backend engineer."},
-                    {"role": "user", "content":full_prompt}
+                    {"role": "system", "content": role_prompt},
+                    {"role": "user", "content":prompt}
                 ],
-                temperature=0.2,
+                temperature=0,
                 max_tokens=2000
             )
 

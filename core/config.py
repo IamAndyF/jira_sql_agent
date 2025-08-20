@@ -22,6 +22,12 @@ class DatabaseConfig:
         """Returns a safe connection string without sensitive information"""
         return f"dbname='{self.dbname}' user='{self.user}' host='{self.host}' port='{self.port}'"
     
+    @property
+    def sqlalchemy_connection_string(self):
+        """Returns a SQLAlchemy compatible connection string"""
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.dbname}"
+    
+    
 class JiraConfig:
     def __init__(self):
         self.url = os.getenv("JIRA_URL", "")
@@ -58,6 +64,7 @@ config = Config()
 
 DATABASE_URL = config.database.connection_string
 SAFE_DATABASE_URL = config.database.safe_connection_string
+SQLALCHEMY_URL = config.database.sqlalchemy_connection_string
 
     
 
