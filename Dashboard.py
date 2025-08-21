@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit as st
 from core.backend import get_analysed_issues, run_sql_task
+from core.jira_agent import JiraAgent
 
 st.set_page_config(page_title="Jira SQL Feasibility Dashboard", layout="wide")
 
@@ -28,8 +29,7 @@ with tab1:
                 if st.button(f"Select {issue['key']} for processing", key=f"btn-{issue['key']}"):
                     with st.spinner(f"Running SQL task for {issue['key']}..."):
                         output = run_sql_task(issue['key'], issue['summary'])
-                        st.code(output["sql"], language="sql")
-                        st.write(output["results"])
+                        st.code(output, language="sql")
                     st.success(f"{issue['key']} selected for processing.")
                     
     else:

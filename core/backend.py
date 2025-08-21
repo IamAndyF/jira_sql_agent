@@ -1,26 +1,17 @@
-from core.config import Config, DATABASE_URL
+from core.config import Config, SQLALCHEMY_URL
 from core.jira_connector import JiraConnector
 from core.jira_agent import JiraAgent
-from core.database_connector import DatabaseManager
-from core.sql_agent import SQLAgent
+from core.sql_rag_agent import SQLRAGContext, SQLRAGAgent
 from logger import logger
 
 def get_analysed_issues():
     config = Config()
 
-    db_manager = DatabaseManager()
-    try:
-        with db_manager.get_connection(DATABASE_URL) as connection:
-            logger.info(f"Connected to DB, retrieving schema...")
-            db_schema = db_manager.get_schema(connection)
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-
     # Get Jira connection
     logger.info("Initialising jira connector")
     jira_connector = JiraConnector(config.jira)
     logger.info("connecting to Jira")
-    jira_client = jira_connector.get_connection()
+    jira_client = jira_connector.get_jira_connection()
     if not jira_client:
         raise RuntimeError("Failed to connect to Jira.")
     
@@ -45,13 +36,13 @@ def run_sql_task(issue_key, issue_summary):
     config = Config()
 
     jira_connector = JiraConnector(config.jira)
-    jira_client = jira_connector.get_connection()
+    jira_client = jira_connector.get_jira_connection()
 
     issue = jira_client.issue(issue_key)
 
     
-    sql_agent = SQLAgent(
-        config.openai.openai_model
-    )
+    rag_ctx = SQLRAGContext(db_uri=SQLALCHEMY_URL, openai_model="gpt-4o-mini")
+    rag_ctx.initialize_indexes()
+    agent = SQLRAGAgent(rag_ctx)
 
-    return sql_agent.get_qeury(issue, issue_summary)
+    return agent.run(issue, issue_summary)

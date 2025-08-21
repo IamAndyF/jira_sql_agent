@@ -9,7 +9,7 @@ class JiraConnector:
         self.username = jira_config.username
         self.jira_api_token = jira_config.jira_api_token
 
-    def get_connection(self):
+    def get_jira_connection(self):
         try:
             jira_client = JIRA(
                 server=self.url,
@@ -23,9 +23,3 @@ class JiraConnector:
             logger.info(f"Failed to connect to Jira: {e}")
             return None
 
-
-
-# Testing 
-# jira_config = JiraConfig()
-# jira_connector = JiraConnector(jira_config)
-# x = jira_connector.get_connection()

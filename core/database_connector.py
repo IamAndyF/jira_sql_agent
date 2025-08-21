@@ -1,32 +1,23 @@
-import os
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from core.config import DATABASE_URL, SAFE_DATABASE_URL
 from contextlib import contextmanager
+from sqlalchemy import create_engine, text
 
 from logger import logger
 
-class DatabaseManager:
+class Database:
+    def __init__(self, database_url):
+        self.engine = create_engine(database_url, pool_pre_ping=True)
+
     @contextmanager
-    def get_connection(self, database_url):
-        conn = None
-        try:
-            conn = psycopg2.connect(
-                database_url,
-                cursor_factory=RealDictCursor
-            )
-            logger.info(f"Successfully connected to the database")
+    def get_connection(self):
+        conn = self.engine.connect()
+        try: 
             yield conn
-        
-        except Exception as e:
-            logger.info(f"Database connection error: {e}")
-            if conn: 
-                conn.rollback()
-            raise
         finally:
-            if conn:
-                conn.close()
-                logger.info(f"Database connection closed.")
+            conn.close()
 
     def execute_query(self, query, conn, params=None):
         try:
@@ -55,4 +46,23 @@ class DatabaseManager:
             table, column, dtype = row['table_name'], row['column_name'], row['data_type']
             schema.setdefault(table, []).append((column, dtype))
         return schema
-
+    
+    def get_connection_depreceated(self, database_url):
+        conn = None
+        try:
+            conn = psycopg2.connect(
+                database_url,
+                cursor_factory=RealDictCursor
+            )
+            logger.info(f"Successfully connected to the database")
+            yield conn
+        
+        except Exception as e:
+            logger.info(f"Database connection error: {e}")
+            if conn: 
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+                logger.info(f"Database connection closed.")

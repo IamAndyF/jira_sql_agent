@@ -1,7 +1,6 @@
 from jira import JIRA, JIRAError
 import openai
 from openai import OpenAIError
-from langchain.prompts import PromptTemplate
 from logger import logger
 
 class JiraAgent:
@@ -39,16 +38,13 @@ class JiraAgent:
             ## Jira Issues to Evaluate
             {formatted_issue}
 
-            ## Vagueness Assessment
-            **Specific field names or column names mentioned** (not just "data", "information", "reports")
-            **Exact output format stated** (CSV export, dashboard view, summary table, etc.)
-            **Clear business metrics or aggregations defined** (COUNT of X, SUM of Y, etc.)
 
-            ## Edge Cases to Reject
+            ## Reject any tasks that require:
             - Requests that involve any schema modifications (CREATE, ALTER, DROP)
-            - Tasks requiring data from external systems
-            - Any mention of user permissions, access control, or system administration
-            - Real-time processing or streaming data requirements
+            - Data from external APIs or feeds
+            - Manual file uploads from external systems
+            - Streaming or live data not stored in our database
+            - Access to third-party SaaS or cloud services
 
             **CRITICAL EXAMPLES OF REQUESTS THAT MUST BE REJECTED:**
             - "Generate Interaction Reports" (no fields specified, no output format)
@@ -56,6 +52,11 @@ class JiraAgent:
             - "Create customer analysis" (no fields, no output format, no metrics)
             - "Build reporting functionality" (completely vague)
             - "Develop dashboard for interactions" (no specific data points)
+
+            ## Vagueness Assessment
+            **Specific field names or column names mentioned** (not just "data", "information", "reports")
+            **Exact output format stated** (CSV export, dashboard view, summary table, etc.)
+            **Clear business metrics or aggregations defined** (COUNT of X, SUM of Y, etc.)
 
             If the request is vague reject with:
             - **Feasible:** No
