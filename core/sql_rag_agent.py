@@ -169,7 +169,8 @@ class SQLRAGContext:
         compact_ctx = self.build_compact_context(retrieved)
 
 
-        prompt = f"""\
+        prompt = f"""
+        
         Jira Ticket:
         {jira_ticket}
 
@@ -207,7 +208,8 @@ class SQLRAGAgent:
         )
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
 
-        prompt = f"""\
+        prompt = f"""
+        
         Jira Ticket:
         {jira_ticket}
 

@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit as st
-from core.backend import get_analysed_issues, run_sql_task
+from core.backend import get_analysed_issues, run_sql_task, get_in_progress
 from core.jira_agent import JiraAgent
 
 st.set_page_config(page_title="Jira SQL Feasibility Dashboard", layout="wide")
@@ -18,8 +18,10 @@ with st.spinner("Fetching Jira issues and running analysis..."):
 # Separate into two lists
 feasible_issues = [i for i in analyzed_issues if i["feasible"]]
 not_feasible_issues = [i for i in analyzed_issues if not i["feasible"]]
+in_progress_issues = [i for i in get_in_progress()]
 
-tab1, tab2 = st.tabs(["Feasible", "Not Feasible"])
+tab1, tab2, tab3 = st.tabs(["Feasible", "Not Feasible", "In Progress"])
+
 
 with tab1:
     if feasible_issues:
@@ -30,10 +32,12 @@ with tab1:
                     with st.spinner(f"Running SQL task for {issue['key']}..."):
                         output = run_sql_task(issue['key'], issue['summary'])
                         st.code(output, language="sql")
+
                     st.success(f"{issue['key']} selected for processing.")
                     
     else:
         st.info("No feasible issues found.")
+
 
 with tab2:
     if not_feasible_issues:
@@ -42,3 +46,10 @@ with tab2:
                 st.markdown(issue["analysis"])
     else:
         st.info("No non-feasible issues found.")
+
+
+with tab3:
+    if in_progress_issues:
+        for issue in in_progress_issues:
+            with st.expander(f"{issue['key']}: {issue['summary']}"):
+                st.markdown(issue["analysis"])

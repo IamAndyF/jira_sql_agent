@@ -10,9 +10,15 @@ class JiraAgent:
         self.openai_api_key = openai_api_key
 
      
-    def get_issues(self, jql=None):
+    def get_issues(self, status, jql=None):
+        current_user = self.jira.current_user()
+
         if jql is None:
-            jql = f"project={self.jira_project_key} AND status='To Do'"
+            if status == "In Progress":
+                jql = f'project="{self.jira_project_key}" AND status="{status}" AND accountId="{current_user}"'
+            else:
+                jql = f'project="{self.jira_project_key}" AND status="{status}"'
+            
         return self.jira.search_issues(jql)
     
     def post_comment(self, issue_key, comment):
@@ -23,6 +29,15 @@ class JiraAgent:
             logger.error(f"Failed to post comment to issue {issue_key}: {e}")
         except Exception as e:
             logger.error(f"Unexpected error posting comment to issue {issue_key}: {e}")
+
+    def assign_to_self(self, issue_key):
+        try:
+            current_user_id = self.jira.current_user()
+            issue = self.jira.issue(issue_key)
+            issue.update(assignee={'id': current_user_id})
+            logger.info(f"Issue {issue_key} assigned to self")
+        except JIRAError as e:
+            logger.info(f"Failed to assign issue {issue_key} to self: {e}")
 
         
     def analyse_issues(self, issue):    
