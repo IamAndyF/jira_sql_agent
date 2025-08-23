@@ -11,11 +11,9 @@ class JiraAgent:
 
      
     def get_issues(self, status, jql=None):
-        current_user = self.jira.current_user()
-
         if jql is None:
             if status == "In Progress":
-                jql = f'project="{self.jira_project_key}" AND status="{status}" AND accountId="{current_user}"'
+                jql = f'project="{self.jira_project_key}" AND status="{status}" AND assignee=currentUser()'
             else:
                 jql = f'project="{self.jira_project_key}" AND status="{status}"'
             

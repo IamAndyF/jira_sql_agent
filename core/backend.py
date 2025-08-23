@@ -61,6 +61,6 @@ def get_in_progress():
         raise RuntimeError("Failed to connect to Jira.")
     
     agent = JiraAgent(jira_client, config.jira.jira_project_key, config.openai.openai_api_key)
-    issues = agent.get_issues(status="In Progress")
+    issues = agent.get_issues("In Progress")
     logger.info(f"Found {len(issues)} issues in progress")
     return issues
