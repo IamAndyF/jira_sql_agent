@@ -1,10 +1,12 @@
 import streamlit as st
-from core.backend import get_analysed_issues, run_sql_task, get_in_progress
+
+from core.backend import get_analysed_issues, get_in_progress, run_sql_task
 from core.jira_agent import JiraAgent
 
 st.set_page_config(page_title="Jira SQL Feasibility Dashboard", layout="wide")
 st.title("Jira SQL Feasibility Dashboard")
 st.caption("Automatically checks Jira issues for SQL feasibility using your JiraAgent.")
+
 
 # Fetch in-progress issues from Jira
 @st.cache_data(ttl=60)
@@ -32,9 +34,11 @@ with tab1:
         for issue in feasible_issues:
             with st.expander(f"{issue['key']}: {issue['summary']}"):
                 st.markdown(issue["analysis"])
-                if st.button(f"Select {issue['key']} for processing", key=f"btn-{issue['key']}"):
+                if st.button(
+                    f"Select {issue['key']} for processing", key=f"btn-{issue['key']}"
+                ):
                     with st.spinner(f"Running SQL task for {issue['key']}..."):
-                        output = run_sql_task(issue['key'], issue['summary'])
+                        output = run_sql_task(issue["key"], issue["summary"])
                         st.code(output, language="sql")
 
                     st.success(f"{issue['key']} selected for processing.")
@@ -43,7 +47,6 @@ with tab1:
                     cached_get_in_progress.clear()
                     st.rerun()
 
-                    
     else:
         st.info("No feasible issues found.")
 
@@ -60,7 +63,7 @@ with tab2:
 with tab3:
     if in_progress_issues:
         for issue in in_progress_issues:
-            with st.expander(f"{issue.key}: {issue.fields.summary}"):
+            with st.expander(f"{issue['key']}: {issue['summary']}"):
                 st.write("Currently in progress")
-    else: 
+    else:
         st.info("No issues in progress")

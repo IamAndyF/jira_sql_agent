@@ -1,7 +1,9 @@
-from jira import JIRA, JIRAError
 import openai
+from jira import JIRA, JIRAError
 from openai import OpenAIError
+
 from logger import logger
+
 
 class JiraAgent:
     def __init__(self, jira_client: JIRA, project_key, openai_api_key):
@@ -9,16 +11,15 @@ class JiraAgent:
         self.jira_project_key = project_key
         self.openai_api_key = openai_api_key
 
-     
     def get_issues(self, status, jql=None):
         if jql is None:
             if status == "In Progress":
                 jql = f'project="{self.jira_project_key}" AND status="{status}" AND assignee=currentUser()'
             else:
                 jql = f'project="{self.jira_project_key}" AND status="{status}"'
-            
+
         return self.jira.search_issues(jql)
-    
+
     def post_comment(self, issue_key, comment):
         try:
             self.jira.add_comment(issue_key, comment)
@@ -32,14 +33,17 @@ class JiraAgent:
         try:
             current_user_id = self.jira.current_user()
             issue = self.jira.issue(issue_key)
-            issue.update(assignee={'id': current_user_id})
+            issue.update(assignee={"id": current_user_id})
             logger.info(f"Issue {issue_key} assigned to self")
         except JIRAError as e:
             logger.info(f"Failed to assign issue {issue_key} to self: {e}")
 
-        
-    def analyse_issues(self, issue):    
-        formatted_issue = "\n".join([f"{issue.key}: {issue.fields.summary}\nDescription: {issue.fields.description or 'No description'}"])
+    def analyse_issues(self, issue):
+        formatted_issue = "\n".join(
+            [
+                f"{issue.key}: {issue.fields.summary}\nDescription: {issue.fields.description or 'No description'}"
+            ]
+        )
 
         prompt = f"""
         
@@ -89,7 +93,6 @@ class JiraAgent:
 
             Be conservative in your assessments. When in doubt, reject and explain why the task exceeds simple SQL operations.
             """
-        
 
         role_prompt = f"""
             You are an expert AI backend engineer and SQL data extraction specialist.
@@ -98,19 +101,18 @@ class JiraAgent:
         """
         client = openai.Client(api_key=self.openai_api_key)
 
-        try: 
+        try:
             response = client.chat.completions.create(
-                model = 'gpt-3.5-turbo',
-                messages = [
+                model="gpt-3.5-turbo",
+                messages=[
                     {"role": "system", "content": role_prompt},
-                    {"role": "user", "content":prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0,
-                max_tokens=2000
+                max_tokens=2000,
             )
 
             return response.choices[0].message.content.strip()
-        
+
         except OpenAIError as e:
             return f"OpenAI API Error: {e}"
-            

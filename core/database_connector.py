@@ -1,11 +1,12 @@
+from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from core.config import DATABASE_URL, SAFE_DATABASE_URL
-from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 
+from core.config import DATABASE_URL, SAFE_DATABASE_URL
 from logger import logger
+
 
 class Database:
     def __init__(self, database_url):
@@ -14,7 +15,7 @@ class Database:
     @contextmanager
     def get_connection(self):
         conn = self.engine.connect()
-        try: 
+        try:
             yield conn
         finally:
             conn.close()
@@ -26,7 +27,7 @@ class Database:
             results = cursor.fetchall()
 
             return [dict(row) for row in results]
-            
+
         except Exception as e:
             logger.info(f"Database query error: {e}")
             conn.rollback()
@@ -34,32 +35,35 @@ class Database:
 
     def get_schema(self, conn):
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT table_name, column_name, data_type
             FROM information_schema.columns
             WHERE table_schema = 'public'
-        """)
+        """
+        )
 
         rows = cursor.fetchall()
         schema = {}
         for row in rows:
-            table, column, dtype = row['table_name'], row['column_name'], row['data_type']
+            table, column, dtype = (
+                row["table_name"],
+                row["column_name"],
+                row["data_type"],
+            )
             schema.setdefault(table, []).append((column, dtype))
         return schema
-    
+
     def get_connection_depreceated(self, database_url):
         conn = None
         try:
-            conn = psycopg2.connect(
-                database_url,
-                cursor_factory=RealDictCursor
-            )
+            conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
             logger.info(f"Successfully connected to the database")
             yield conn
-        
+
         except Exception as e:
             logger.info(f"Database connection error: {e}")
-            if conn: 
+            if conn:
                 conn.rollback()
             raise
         finally:
