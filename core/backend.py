@@ -1,7 +1,12 @@
+import pandas as pd
+import os
+import tempfile
+from sqlalchemy import text
 from core.config import SQLALCHEMY_URL, Config
 from core.jira_agent import JiraAgent
 from core.jira_connector import JiraConnector
 from core.sql_rag_agent import SQLRAGAgent, SQLRAGContext
+from core.database_connector import Database
 from logger import logger
 
 
@@ -51,11 +56,39 @@ def run_sql_task(issue_key, issue_summary):
     jira_agent.assign_to_self(issue_key)
     jira_connector.progress_ticket(jira_client, issue_key)
 
-    rag_ctx = SQLRAGContext(db_uri=SQLALCHEMY_URL, openai_model="gpt-4o-mini")
+    # Generate SQL
+    rag_ctx = SQLRAGContext(db_uri=SQLALCHEMY_URL, openai_model="gpt-4o")
     rag_ctx.initialize_indexes()
     agent = SQLRAGAgent(rag_ctx)
+    raw_sql_query =  agent.run(issue, issue_summary)
+    sql_query = agent.clean_sql_output(raw_sql_query)
 
-    return agent.run(issue, issue_summary)
+    # Execute SQL
+    db = Database(SQLALCHEMY_URL)
+    with db.get_connection() as conn:
+        result = conn.execute(text(sql_query)).fetchall()
+        df = pd.DataFrame(result)
+    
+    if df.empty:
+        jira_agent.post_comment(issue_key, "Generated SQL returned no results: \n```\n{sql-query}\n```")
+        return sql_query
+    
+    tmp_dir = tempfile.gettempdir()
+    csv_path = os.path.join(tmp_dir, f"{issue_key}_results.csv")
+    df.to_csv(csv_path, index=False)
+
+    jira_client.add_attachment(issue=issue, attachment=csv_path)
+
+    jira_agent.post_comment(
+        issue_key,
+        f"Gnerated SQL query: \n```\n{sql_query}\n```\n"
+         f"Results exported in and attached as: '{issue_key}_results.csv'."
+        )
+    
+    os.remove(csv_path)
+
+    return sql_query
+
 
 
 def get_in_progress():
