@@ -38,12 +38,17 @@ class JiraAgent:
         except JIRAError as e:
             logger.info(f"Failed to assign issue {issue_key} to self: {e}")
 
-    def analyse_issues(self, issue):
+    @staticmethod
+    def format_issue(issue):
         formatted_issue = "\n".join(
             [
                 f"{issue.key}: {issue.fields.summary}\nDescription: {issue.fields.description or 'No description'}"
             ]
         )
+        return formatted_issue
+
+    def analyse_issues(self, issue):
+        formatted_issue = self.format_issue(issue)
 
         prompt = f"""
         

@@ -1,92 +1,12 @@
-from typing import Optional
 from collections import defaultdict
 import re
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
-from langchain_community.agent_toolkits import create_sql_agent
-
-
-class SchemaStore:
-    def __init__(self, db: SQLDatabase, schema = "public"):
-        self.db = db
-        self.schema = schema
-
-    def fetch_schema(self):
-
-        sql = f"""
-        SELECT table_name, column_name, data_type
-        FROM information_schema.columns
-        WHERE table_schema = '{self.schema}'
-        ORDER BY table_name, ordinal_position;
-        """
-        try:
-            with self.db._engine.connect() as conn:
-                rows = conn.execute(sql).fetchall()
-            return [{"table": r[0], "column": r[1], "type": r[2]} for r in rows]
-        except Exception:
-            return []
-
-    def text_like_columns(self, schema_rows):
-        if schema_rows is None:
-            schema_rows = self.fetch_schema()
-        text_types = {"text", "varchar", "character varying", "char"}
-        return [(r["table"], r["column"]) for r in schema_rows if r["type"].lower() in text_types]
-
-    def tables_for_columns(self, cols):
-        return sorted({t for t, _ in cols})
-
-    def compact_schema_for_tables(self, tables):
-        all_rows = self.fetch_schema()
-        by_table = defaultdict(list)
-        for r in all_rows:
-            if r["table"] in tables:
-                by_table[r["table"]].append(f"{r['column']} ({r['type']})")
-        summary_lines = []
-        for t in sorted(by_table.keys()):
-            cols = ", ".join(by_table[t][:20])  
-            if len(by_table[t]) > 20:
-                cols += f", … (+{len(by_table[t])-20} more)"
-            summary_lines.append(f"- {t}: {cols}")
-        return "\n".join(summary_lines)
-
-
-
-class ValueVectorStore:
-    def __init__(self, embedding_model = "text-embedding-3-small"):
-        self.embeddings = OpenAIEmbeddings(model=embedding_model)
-        self.vs: Optional[FAISS] = None
-
-    def build_index(self, db: SQLDatabase, text_columns, per_column_limit = 200):
-        docs, metas = [], []
-        for table, col in text_columns:
-            sql = f'SELECT DISTINCT "{col}" FROM "{table}" LIMIT {per_column_limit};'
-            try:
-                with db._engine.connect() as conn:
-                    rows = conn.execute(sql).fetchall()
-            except Exception:
-                rows = []
-            for r in rows:
-                val = r[0]
-                if val is None:
-                    continue
-                s = str(val)
-                if not s.strip():
-                    continue
-                docs.append(s)
-                metas.append({"table": table, "column": col, "value": s})
-
-        if docs:
-            self.vs = FAISS.from_texts(docs, self.embeddings, metadatas=metas)
-        else:
-            self.vs = None
-
-    def search_values(self, text, k = 8):
-        if not self.vs:
-            return []
-        return self.vs.similarity_search_with_score(text, k=k)
-
+from core.schema_store import SchemaStore
+from core.vector_store import ValueVectorStore
+from core.jira_agent import JiraAgent
+from logger import logger
 
 class SQLRAGContext:
     def __init__(self, db_uri, openai_model):
@@ -95,17 +15,11 @@ class SQLRAGContext:
         self.value_store = ValueVectorStore()
         self.llm = ChatOpenAI(model_name=openai_model, temperature=0)
 
-        self.agent = create_sql_agent(
-            llm=self.llm,
-            db=self.db,
-            agent_type="openai-tools",
-            verbose=True,
-            allow_dangerous_requests=False,
-        )
-
     def initialize_indexes(self, per_column_limit= 200):
         schema_rows = self.schema_store.fetch_schema()
+        logger.info(f"{len(schema_rows)} columns found in schema.")
         text_cols = self.schema_store.text_like_columns(schema_rows)
+        logger.info(f"{len(text_cols)} text-like columns found for indexing.")
         self.value_store.build_index(self.db, text_cols, per_column_limit=per_column_limit)
 
     def retrieve_relevant_values(self, user_text, k_values = 8, max_cols = 6, max_examples_per_col = 5):
@@ -140,6 +54,7 @@ class SQLRAGContext:
         top_cols = [kc for kc, _ in col_scores[:max_cols]]
 
         return {kc: ranked[kc] for kc in top_cols if kc in ranked}
+    
 
     def build_compact_context(self, retrieved):
         cols = list(retrieved.keys())
@@ -158,53 +73,12 @@ class SQLRAGContext:
 
         {chr(10).join(lines)}
         """
-
-    def generate_sql(self, jira_ticket, feasibility_summary, k_values = 10):
-        query_text = f"{jira_ticket}\n\n{feasibility_summary}".strip()
-        retrieved = self.retrieve_relevant_values(
-            user_text=query_text,
-            k_values=k_values,
-            max_cols=6,
-            max_examples_per_col=5,
-        )
-        compact_ctx = self.build_compact_context(retrieved)
-
-
-        prompt = f"""
-        
-        Jira Ticket:
-        {jira_ticket}
-
-        Feasibility Study:
-        {feasibility_summary}
-
-        Context (only use real values shown; don't guess):
-        {compact_ctx}
-
-        INSTRUCTIONS:
-        - Use only the columns and example values above when applying filters.
-        - Prefer JOINs that reflect foreign keys (e.g., trades.symbol -> instruments.symbol).
-        - Do NOT hardcode categories not present in examples (e.g., avoid sector='Equity' unless in values).
-        - Do NOT include any extra columns.
-        - RETURN ALL rows of data unless specified
-        - You MUST return ONLY the SQL query.
-        - Wrap the SQL inside a fenced block like this:
-
-        ```sql
-        SELECT ...
-        FROM ...
-        """
-
-        resp = self.agent.invoke({"input": prompt})
-
-        sql_text = (resp.get("output") or resp.get("output_text") or "").strip()
-        return {"sql": sql_text}
     
     
 class SQLRAGAgent:
     def __init__(self, rag_ctx: SQLRAGContext):
         self.rag_ctx = rag_ctx
-        self.agent = rag_ctx.agent
+        self.llm = rag_ctx.llm
 
     @staticmethod
     def clean_sql_output(raw_text):
@@ -214,31 +88,40 @@ class SQLRAGAgent:
         
         return raw_text.strip()
 
-    def run(self, jira_ticket, feasibility_summary):
+    def run(self, jira_ticket):
         retrieved = self.rag_ctx.retrieve_relevant_values(
-            f"{jira_ticket}\n{feasibility_summary}",
+            f"{jira_ticket}",
             k_values=10,
             max_cols=6,
             max_examples_per_col=5,
         )
+
+        formatted_jira_ticket = JiraAgent.format_issue(jira_ticket)
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
+
+        # Debug: print schema context to terminal
+        print("=== Compact Context ===")
+        print(compact_ctx)
+        print("=======================")
 
         prompt = f"""
         
         Jira Ticket:
-        {jira_ticket}
+        {formatted_jira_ticket}
 
-        Feasibility Study:
-        {feasibility_summary}
-
-        Context (only use these values and columns):
+        Schema Context:
         {compact_ctx}
 
         INSTRUCTIONS:
-        - Write a valid SQL query for the above.
-        - Use only the schema/values shown.
+        - Carefully review the Jira ticket and understand what the ticket requires to be transformed into a SQL query.
+        - Use the Schema Context to identify relevant tables and columns.
+        - Capture **all constraints** mentioned in the ticket (filters, groupings, breakdowns, date ranges, categories, limits).
+        - If time ranges are mentioned, filter using the correct date column.
+        - Use JOINs if needed to pull in columns from related tables.
         - Do NOT hallucinate missing categories.
-        - Return ONLY the SQL.
+        - Do NOT include any extra columns.
+        - Be precise, but don’t ignore requested details in favor of simplicity.
+        - RETURN ALL rows of data unless specified.
         - Wrap the SQL inside a fenced block like this:
 
         ```sql
@@ -246,8 +129,9 @@ class SQLRAGAgent:
         FROM ...
         """
 
-        resp = self.agent.invoke({"input": prompt})
-        return resp.get("output") or resp.get("output_text") or ""
+        resp = self.llm.invoke(prompt)
+        return resp.content
+        
     
 
         

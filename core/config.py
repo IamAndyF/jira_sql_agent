@@ -67,3 +67,7 @@ config = Config()
 DATABASE_URL = config.database.connection_string
 SAFE_DATABASE_URL = config.database.safe_connection_string
 SQLALCHEMY_URL = config.database.sqlalchemy_connection_string
+
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+SCHEMA_PATH = os.path.join(BASE_DIR, "data", "schema.json")
+VECTOR_PATH = os.path.join(BASE_DIR, "data", "faiss_index")

@@ -7,6 +7,7 @@ from core.jira_agent import JiraAgent
 from core.jira_connector import JiraConnector
 from core.sql_rag_agent import SQLRAGAgent, SQLRAGContext
 from core.database_connector import Database
+from core.context_loader import load_context
 from logger import logger
 
 
@@ -57,10 +58,9 @@ def run_sql_task(issue_key, issue_summary):
     jira_connector.progress_ticket(jira_client, issue_key)
 
     # Generate SQL
-    rag_ctx = SQLRAGContext(db_uri=SQLALCHEMY_URL, openai_model="gpt-4o")
-    rag_ctx.initialize_indexes()
-    agent = SQLRAGAgent(rag_ctx)
-    raw_sql_query =  agent.run(issue, issue_summary)
+    ctx = load_context("gpt-4o")
+    agent = SQLRAGAgent(ctx)
+    raw_sql_query =  agent.run(issue)
     sql_query = agent.clean_sql_output(raw_sql_query)
 
     # Execute SQL

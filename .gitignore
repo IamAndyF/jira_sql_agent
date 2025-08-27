@@ -14,3 +14,9 @@ __pycache__/
 
 # Mac system files
 .DS_Store
+
+# Ignore schema snapshot
+/data/schema.json
+
+# Ignore FAISS vector store
+/data/faiss_index/
