@@ -1,5 +1,5 @@
 import openai
-from jira import JIRA, JIRAError
+from jira import JIRA
 from openai import OpenAIError
 
 from logger import logger
@@ -11,41 +11,6 @@ class JiraAgent:
         self.jira_project_key = project_key
         self.openai_api_key = openai_api_key
 
-    def get_issues(self, status, jql=None):
-        if jql is None:
-            if status == "In Progress":
-                jql = f'project="{self.jira_project_key}" AND status="{status}" AND assignee=currentUser()'
-            else:
-                jql = f'project="{self.jira_project_key}" AND status="{status}"'
-
-        return self.jira.search_issues(jql)
-
-    def post_comment(self, issue_key, comment):
-        try:
-            self.jira.add_comment(issue_key, comment)
-            logger.info(f"Comment posted to issue {issue_key}")
-        except JIRAError as e:
-            logger.error(f"Failed to post comment to issue {issue_key}: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error posting comment to issue {issue_key}: {e}")
-
-    def assign_to_self(self, issue_key):
-        try:
-            current_user_id = self.jira.current_user()
-            issue = self.jira.issue(issue_key)
-            issue.update(assignee={"id": current_user_id})
-            logger.info(f"Issue {issue_key} assigned to self")
-        except JIRAError as e:
-            logger.info(f"Failed to assign issue {issue_key} to self: {e}")
-
-    @staticmethod
-    def format_issue(issue):
-        formatted_issue = "\n".join(
-            [
-                f"{issue.key}: {issue.fields.summary}\nDescription: {issue.fields.description or 'No description'}"
-            ]
-        )
-        return formatted_issue
 
     def analyse_issues(self, issue):
         formatted_issue = self.format_issue(issue)
