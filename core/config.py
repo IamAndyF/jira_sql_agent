@@ -40,7 +40,8 @@ class JiraConfig:
 class OpenAIConfig:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 
 
 # Control panel for settings, container that holds all configurations

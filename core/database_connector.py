@@ -53,20 +53,3 @@ class Database:
             )
             schema.setdefault(table, []).append((column, dtype))
         return schema
-
-    def get_connection_depreceated(self, database_url):
-        conn = None
-        try:
-            conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
-            logger.info(f"Successfully connected to the database")
-            yield conn
-
-        except Exception as e:
-            logger.info(f"Database connection error: {e}")
-            if conn:
-                conn.rollback()
-            raise
-        finally:
-            if conn:
-                conn.close()
-                logger.info(f"Database connection closed.")
