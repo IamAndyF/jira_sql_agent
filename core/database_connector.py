@@ -1,10 +1,5 @@
 from contextlib import contextmanager
-
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from sqlalchemy import create_engine, text
-
-from core.config import DATABASE_URL, SAFE_DATABASE_URL
+from sqlalchemy import create_engine
 from logger import logger
 
 
@@ -19,37 +14,3 @@ class Database:
             yield conn
         finally:
             conn.close()
-
-    def execute_query(self, query, conn, params=None):
-        try:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            results = cursor.fetchall()
-
-            return [dict(row) for row in results]
-
-        except Exception as e:
-            logger.info(f"Database query error: {e}")
-            conn.rollback()
-            return None
-
-    def get_schema(self, conn):
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT table_name, column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-        """
-        )
-
-        rows = cursor.fetchall()
-        schema = {}
-        for row in rows:
-            table, column, dtype = (
-                row["table_name"],
-                row["column_name"],
-                row["data_type"],
-            )
-            schema.setdefault(table, []).append((column, dtype))
-        return schema

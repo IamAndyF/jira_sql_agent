@@ -1,22 +1,26 @@
 import streamlit as st
 
-from core.backend import analyse_issue_feasibility, get_in_progress, run_sql_task
-from core.jira_agent import JiraAgent
+from core.config import Config
+from core.backend import Services
 
 st.set_page_config(page_title="Jira SQL Feasibility Dashboard", layout="wide")
 st.title("Jira SQL Feasibility Dashboard")
 st.caption("Automatically checks Jira issues for SQL feasibility using your JiraAgent.")
 
 
+config = Config()
+services = Services(config)
+
+
 # Fetch in-progress issues from Jira
 @st.cache_data(ttl=60)
 def cached_get_in_progress():
-    return get_in_progress()
+    return services.get_in_progress()
 
 
 with st.spinner("Fetching Jira issues and running analysis..."):
     try:
-        analyzed_issues = analyse_issue_feasibility()
+        analyzed_issues = services.analyse_issue_feasibility()
     except Exception as e:
         st.error(f"Error: {e}")
         st.stop()
@@ -38,7 +42,7 @@ with tab1:
                     f"Select {issue['key']} for processing", key=f"btn-{issue['key']}"
                 ):
                     with st.spinner(f"Running SQL task for {issue['key']}..."):
-                        output = run_sql_task(issue["key"], issue["summary"])
+                        output = services.run_sql_task(issue["key"], issue["summary"])
                         st.code(output, language="sql")
 
                     st.success(f"{issue['key']} selected for processing.")

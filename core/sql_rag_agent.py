@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
 from core.schema_store import SchemaStore
 from core.vector_store import ValueVectorStore
-from core.jira_agent import JiraAgent
+from utils.jira_utils import JiraUtils
 from logger import logger
 
 class SQLRAGContext:
@@ -96,7 +96,7 @@ class SQLRAGAgent:
             max_examples_per_col=5,
         )
 
-        formatted_jira_ticket = JiraAgent.format_issue(jira_ticket)
+        formatted_jira_ticket = JiraUtils.format_issue(jira_ticket)
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
 
         # Debug: print schema context to terminal

@@ -14,6 +14,7 @@ from logger import logger
 class Services:
     def __init__(self, config: Config):
         self.config = config
+        self.openai_model = config.openai.openai_model
         self.jira_client = JiraConnector(config.jira).get_jira_connection()
         self.jira_utils = JiraUtils(self.jira_client, config.jira.jira_project_key)
         self.jira_agent = JiraAgent(self.jira_client, config.jira.jira_project_key, config.openai.openai_api_key)
@@ -47,7 +48,7 @@ class Services:
         self.jira_utils.progress_ticket(issue_key)
 
         # Generate SQL
-        ctx = load_context("gpt-4o")
+        ctx = load_context(self.openai_model)
         agent = SQLRAGAgent(ctx)
         raw_sql_query =  agent.run(issue)
         sql_query = agent.clean_sql_output(raw_sql_query)
@@ -80,7 +81,7 @@ class Services:
 
 
     def get_in_progress(self):
-        
+
         issues = self.jira_utils.get_issues("In Progress")
         logger.info(f"Found {len(issues)} issues in progress")
 

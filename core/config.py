@@ -15,15 +15,6 @@ class DatabaseConfig:
         self.password = os.getenv("DB_PASSWORD", "")
 
     @property
-    def connection_string(self):
-        return f"dbname='{self.dbname}' user='{self.user}' host='{self.host}' port='{self.port}' password='{self.password}'"
-
-    @property
-    def safe_connection_string(self):
-        """Returns a safe connection string without sensitive information"""
-        return f"dbname='{self.dbname}' user='{self.user}' host='{self.host}' port='{self.port}'"
-
-    @property
     def sqlalchemy_connection_string(self):
         """Returns a SQLAlchemy compatible connection string"""
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.dbname}"
@@ -51,22 +42,8 @@ class Config:
         self.jira = JiraConfig()  # Creates jira settings
         self.openai = OpenAIConfig()  # Creates openai settings
 
-    def validate(self):
-        """Validates the configuration settings"""
-        try:
-            if "postgresql://" not in self.database.connection_string:
-                print("Database connection string must be a PostgreSQL URL")
-                return False
-
-        except ValueError as e:
-            print(f"Configuration validation error: {e}")
-            return False
-
-
 config = Config()
 
-DATABASE_URL = config.database.connection_string
-SAFE_DATABASE_URL = config.database.safe_connection_string
 SQLALCHEMY_URL = config.database.sqlalchemy_connection_string
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))

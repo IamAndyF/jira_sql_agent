@@ -1,7 +1,7 @@
 import openai
 from jira import JIRA
 from openai import OpenAIError
-
+from utils.jira_utils import JiraUtils
 from logger import logger
 
 
@@ -13,7 +13,7 @@ class JiraAgent:
 
 
     def analyse_issues(self, issue):
-        formatted_issue = self.format_issue(issue)
+        formatted_issue = JiraUtils.format_issue(issue)
 
         prompt = f"""
         
