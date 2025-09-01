@@ -1,4 +1,5 @@
 import openai
+import json
 from jira import JIRA
 from openai import OpenAIError
 from utils.jira_utils import JiraUtils
@@ -6,10 +7,11 @@ from logger import logger
 
 
 class JiraAgent:
-    def __init__(self, jira_client: JIRA, project_key, openai_api_key):
+    def __init__(self, jira_client: JIRA, project_key, openai_api_key, openai_model):
         self.jira = jira_client
         self.jira_project_key = project_key
         self.openai_api_key = openai_api_key
+        self.openai_model = openai_model
 
 
     def analyse_issues(self, issue):
@@ -22,7 +24,7 @@ class JiraAgent:
             - Focus on data retrieval, filtering, aggregation, and reporting tasks
             - Reject any requests requiring schema modifications (CREATE, ALTER, DROP), user management, or system administration
 
-            ## Jira Issues to Evaluate
+            ## Jira Issue to Evaluate
             {formatted_issue}
 
 
@@ -51,15 +53,18 @@ class JiraAgent:
             - **Required Information:** [list what stakeholder needs to provide]
 
             ## Required Output Format
-            For each issue, return in this EXACT format below:
+            Return the result in **strict JSON** with this exact structure:
 
-            **Issue Key: [JIRA-XXXX] - [Jira-Summary] **
-            - **Feasible:** Yes/No
-            - **Confidence:** High/Medium/Low
-            - **Complexity Score:** 1-10 (where 1=simple SELECT, 10=complex multi-table analysis)
-            - **Reasoning:** [2-3 sentences explaining your decision]
-            - **Missing Information:** [if vague, list what needs clarification]
-            - **Potential Risks:** [any performance or data access concerns]
+            {{
+                "issue_key": "{issue.key}",
+                "summary": "{issue.fields.summary}",
+                "feasible": true/false,
+                "confidence": "High" | "Medium" | "Low",
+                "complexity_score": integer between 1 and 10,
+                "reasoning": "2-3 sentences explaining your decision",
+                "missing_information": ["list", "of", "strings"],
+                "potential_risks": ["list", "of", "strings"]
+            }}
 
             Be conservative in your assessments. When in doubt, reject and explain why the task exceeds simple SQL operations.
             """
@@ -69,20 +74,31 @@ class JiraAgent:
             Your job is to read Jira tickets and determine if they describe a task
             that involves extracting and/or transforming data from SQL databases.
         """
+        
         client = openai.Client(api_key=self.openai_api_key)
 
         try:
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.openai_model,
                 messages=[
                     {"role": "system", "content": role_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0,
                 max_tokens=2000,
+                response_format={"type": "json_object"}
             )
-
-            return response.choices[0].message.content.strip()
+            result = json.loads(response.choices[0].message.content)
+            return result
 
         except OpenAIError as e:
-            return f"OpenAI API Error: {e}"
+            return {
+                "issue_key": issue.key,
+                "summary": issue.fields.summary,
+                "feasible": False,
+                "confidence": "Low",
+                "complexity_score": 0,
+                "reasoning": f"OpenAI API Error: {e}",
+                "missing_information": [],
+                "potential_risks": []
+            }

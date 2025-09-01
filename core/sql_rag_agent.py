@@ -1,4 +1,5 @@
 from collections import defaultdict
+from pydantic import BaseModel
 import re
 
 from langchain_openai import ChatOpenAI
@@ -7,6 +8,15 @@ from core.schema_store import SchemaStore
 from core.vector_store import ValueVectorStore
 from utils.jira_utils import JiraUtils
 from logger import logger
+
+
+class SQLResponse(BaseModel):
+    sql: str
+
+class ReviewedSQL(BaseModel):
+    sql: str
+    notes: str
+
 
 class SQLRAGContext:
     def __init__(self, db_uri, openai_model):
@@ -61,11 +71,11 @@ class SQLRAGContext:
         tables = self.schema_store.tables_for_columns(cols)
         schema_summary = self.schema_store.compact_schema_for_tables(tables)
 
-        lines = ["Relevant columns and example values:"]
+        lines = ["Relevant columns (with illustrative values — do NOT filter unless explicitly requested in the Jira ticket):"]
         for (table, col), examples in retrieved.items():
             ex_str = ", ".join(examples[:5])
             suffix = "" if len(examples) <= 5 else f" (+{len(examples)-5} more)"
-            lines.append(f"- {table}.{col}: {ex_str}{suffix}")
+            lines.append(f"- {table}.{col}: e.g. {ex_str}{suffix}")
 
         return f"""\
         Database tables & columns (compact):
@@ -79,14 +89,76 @@ class SQLRAGAgent:
     def __init__(self, rag_ctx: SQLRAGContext):
         self.rag_ctx = rag_ctx
         self.llm = rag_ctx.llm
-
+        self.generate_llm = self.llm.with_structured_output(SQLResponse)
+        self.review_llm = self.llm.with_structured_output(ReviewedSQL)
+    
     @staticmethod
-    def clean_sql_output(raw_text):
-        match = re.search(r"```sql(.*?)```", raw_text, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
+    def validate_sql(query):
+        pattern = re.compile(r'^\s*SELECT\b', re.IGNORECASE)
+        if not pattern.match(query.strip()):
+            return False
         
-        return raw_text.strip()
+        forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "EXEC", "GRANT"]
+        if any(word in query.upper() for word in forbidden):
+            return False
+        
+        return True
+    
+    def generate_sql(self, jira_ticket, compact_context):
+        prompt = f"""
+        
+        Jira Ticket:
+        {jira_ticket}
+
+        Schema Context:
+        {compact_context}
+
+        INSTRUCTIONS:
+        - Carefully review the Jira ticket and understand what the ticket requires to be transformed into a SQL query.
+        - Use the Schema Context to identify relevant tables and columns.
+        - The Schema Context includes example values, these are ONLY examples — do NOT filter on them unless the Jira ticket explicitly asks for that filter.
+        - Capture **all constraints** mentioned in the ticket (filters, groupings, breakdowns, date ranges, categories, limits).
+        - If time ranges are mentioned, filter using the correct date column.
+        - Use JOINs if needed to pull in columns from related tables.
+        - Do NOT hallucinate missing categories.
+        - Do NOT include any extra columns.
+        - Do NOT invent columns.
+        - Be precise, but don’t ignore requested details in favor of simplicity.
+        - RETURN ALL rows of data unless specified.
+        
+        Return the sql query as a json object in this format:
+        {{
+            "sql" : "SELECT ...FROM ..."
+        }}
+        """
+
+        return self.generate_llm.invoke(prompt)
+
+
+    def review_sql(self, sql_query):
+        prompt = f"""
+        You are an SQL expert for PostgreSQL.
+
+        Tasks:
+        1. Check SQL syntax for PostgreSQL compatibility.
+        2. Ensure correctness, efficiency, and safety (no DROP/DELETE/UPDATE etc.).
+        3. Fix any PostgreSQL-specific issues.
+
+        SQL query to review: 
+        ```sql
+        {sql_query}
+        ```
+
+        Return a JSON object:
+        {{
+            "sql": "SELECT ...",
+            "notes": "what was changed and why"
+        }}
+        """
+
+        return self.review_llm.invoke(prompt)
+
+        
 
     def run(self, jira_ticket):
         retrieved = self.rag_ctx.retrieve_relevant_values(
@@ -99,39 +171,15 @@ class SQLRAGAgent:
         formatted_jira_ticket = JiraUtils.format_issue(jira_ticket)
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
 
-        # Debug: print schema context to terminal
-        print("=== Compact Context ===")
-        print(compact_ctx)
-        print("=======================")
-
-        prompt = f"""
+        generated_sql_query: SQLResponse = self.generate_sql(formatted_jira_ticket, compact_ctx)
+        reviewed_sql_query: ReviewedSQL = self.review_sql(generated_sql_query.sql.strip())
+        sql_query = reviewed_sql_query.sql.strip()
         
-        Jira Ticket:
-        {formatted_jira_ticket}
-
-        Schema Context:
-        {compact_ctx}
-
-        INSTRUCTIONS:
-        - Carefully review the Jira ticket and understand what the ticket requires to be transformed into a SQL query.
-        - Use the Schema Context to identify relevant tables and columns.
-        - Capture **all constraints** mentioned in the ticket (filters, groupings, breakdowns, date ranges, categories, limits).
-        - If time ranges are mentioned, filter using the correct date column.
-        - Use JOINs if needed to pull in columns from related tables.
-        - Do NOT hallucinate missing categories.
-        - Do NOT include any extra columns.
-        - Be precise, but don’t ignore requested details in favor of simplicity.
-        - RETURN ALL rows of data unless specified.
-        - Wrap the SQL inside a fenced block like this:
-
-        ```sql
-        SELECT ...
-        FROM ...
-        """
-
-        resp = self.llm.invoke(prompt)
-        return resp.content
+         # Final validation
+        if not self.validate_sql(sql_query):
+            raise ValueError("Generated SQL is invalid or unsafe.")
         
+        return sql_query
     
 
         

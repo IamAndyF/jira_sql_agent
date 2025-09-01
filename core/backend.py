@@ -17,7 +17,7 @@ class Services:
         self.openai_model = config.openai.openai_model
         self.jira_client = JiraConnector(config.jira).get_jira_connection()
         self.jira_utils = JiraUtils(self.jira_client, config.jira.jira_project_key)
-        self.jira_agent = JiraAgent(self.jira_client, config.jira.jira_project_key, config.openai.openai_api_key)
+        self.jira_agent = JiraAgent(self.jira_client, config.jira.jira_project_key, config.openai.openai_api_key, config.openai.openai_model)
         self.db = Database(SQLALCHEMY_URL)
 
     def analyse_issue_feasibility(self):
@@ -27,16 +27,7 @@ class Services:
         results = []
         for issue in issues:
             analysis = self.jira_agent.analyse_issues(issue)
-            feasible = "Feasible: Yes" in analysis or "**Feasible:** Yes" in analysis
-
-            results.append(
-                {
-                    "key": issue.key,
-                    "summary": issue.fields.summary,
-                    "feasible": feasible,
-                    "analysis": analysis,
-                }
-            )
+            results.append(analysis)
 
         return results
 
@@ -50,9 +41,8 @@ class Services:
         # Generate SQL
         ctx = load_context(self.openai_model)
         agent = SQLRAGAgent(ctx)
-        raw_sql_query =  agent.run(issue)
-        sql_query = agent.clean_sql_output(raw_sql_query)
-
+        sql_query =  agent.run(issue)
+  
         # Execute SQL
         db = Database(SQLALCHEMY_URL)
         with db.get_connection() as conn:
@@ -61,7 +51,7 @@ class Services:
         
         if df.empty:
             self.jira_utils.post_comment(issue_key, "Generated SQL returned no results: \n```\n{sql-query}\n```")
-            return sql_query
+            return {"status": "empty", "sql": sql_query}
         
         tmp_dir = tempfile.gettempdir()
         csv_path = os.path.join(tmp_dir, f"{issue_key}_results.csv")
@@ -77,8 +67,8 @@ class Services:
         
         os.remove(csv_path)
 
-        return sql_query
-
+        return {"status": "success", "sql": sql_query}
+        
 
     def get_in_progress(self):
 
@@ -87,9 +77,8 @@ class Services:
 
         return [
             {
-                "key": issue.key,
+                "issue_key": issue.key,
                 "summary": issue.fields.summary,
-                "status": issue.fields.status.name,
             }
             for issue in issues
         ]
