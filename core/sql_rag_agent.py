@@ -182,4 +182,52 @@ class SQLRAGAgent:
         return sql_query
     
 
-        
+    def update_sql_with_feedback(self, current_sql, jira_ticket, chat_history, max_retries):
+
+        prompt = f"""
+        You are an expert SQL assistant in PostgreSQL.
+
+        Jira ticket summary:
+        {jira_ticket}
+        Current SQL:
+        ```sql
+        {current_sql}
+        ```
+
+        Feedback and chat history:
+        {chat_history}
+
+        Database schema context:
+        {self.rag_ctx.build_compact_context(self.rag_ctx.retrieve_relevant_values(jira_ticket))}
+
+        Rules:
+        - Only generate SELECT queries.
+        - Do NOT DROP, DELETE, UPDATE, ALTER, CREATE.
+        - Keep all requested columns, filters, and groupings.
+        - Provide reasoning before final SQL.
+
+        Task:
+        Update the SQL query to reflect the feedback and chat history.
+        Return a JSON object with:
+        {{
+            "sql": "Updated SQL query here",
+            "notes": "Explain what was changed and why"
+        }}
+        """
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.review_llm.invoke(prompt)
+                updated_sql = response.sql.strip()
+                notes = response.notes
+
+                if not self.validate_sql(updated_sql):
+                    raise ValueError("Updated SQL is invalid or unsafe.")
+
+                logger.info(f"SQL updated for ticket '{jira_ticket}': {notes}")
+                return ReviewedSQL(sql=updated_sql, notes=notes)
+            
+            except Exception as e:
+                logger.warning(f"Attempt {attempt+1} failed: {e}")
+                if attempt == max_retries:
+                    return ReviewedSQL(sql=current_sql, notes="No changes made due to repeated errors.")
