@@ -5,7 +5,7 @@ from sqlalchemy import text
 from core.config import SQLALCHEMY_URL, Config
 from core.jira_agent import JiraAgent
 from core.jira_connector import JiraConnector
-from core.sql_rag_agent import SQLRAGAgent
+from core.sql_rag_agent import SQLRAGAgent, SQLRAGContext
 from core.database_connector import Database
 from core.context_loader import load_context
 from utils.jira_utils import JiraUtils
@@ -19,6 +19,7 @@ class Services:
         self.jira_utils = JiraUtils(self.jira_client, config.jira.jira_project_key)
         self.jira_agent = JiraAgent(self.jira_client, config.jira.jira_project_key, config.openai.openai_api_key, config.openai.openai_model)
         self.db = Database(SQLALCHEMY_URL)
+        self.sql_agent = SQLRAGAgent(SQLRAGContext(SQLALCHEMY_URL, self.openai_model))
 
     def analyse_issue_feasibility(self):
 
@@ -61,13 +62,16 @@ class Services:
 
         self.jira_utils.post_comment(
             issue_key,
-            f"Gnerated SQL query: \n```\n{sql_query}\n```\n"
+            f"Generated SQL query: \n```\n{sql_query}\n```\n"
             f"Results exported in and attached as: '{issue_key}_results.csv'."
             )
         
         os.remove(csv_path)
 
         return {"status": "success", "sql": sql_query}
+    
+    def run_updated_sql_with_feedback(self, current_sql, jira_ticket, chat_history, max_retries):
+        return self.sql_agent.update_sql_with_feedback(current_sql, jira_ticket, chat_history, max_retries)
         
 
     def get_in_progress(self):
@@ -82,3 +86,10 @@ class Services:
             }
             for issue in issues
         ]
+    
+    def get_ticket_feedback(self, issue_key):
+        comments = self.jira_utils.get_ticket_comments(issue_key)
+        last_comment = comments[-1]
+        return last_comment["body"] if last_comment["author"] != self.jira_utils.jira.current_user() else None
+
+
