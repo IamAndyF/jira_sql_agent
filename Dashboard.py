@@ -17,13 +17,15 @@ services = Services(config)
 def cached_get_in_progress():
     return services.get_in_progress()
 
+if "analysed_issues" not in st.session_state:
+    with st.spinner("Fetching Jira issues and running analysis..."):
+        try:
+            st.session_state.analysed_issues = services.analyse_issue_feasibility()
+        except Exception as e:
+            st.error(f"Error: {e}")
+            st.stop()
 
-with st.spinner("Fetching Jira issues and running analysis..."):
-    try:
-        analysed_issues = services.analyse_issue_feasibility()
-    except Exception as e:
-        st.error(f"Error: {e}")
-        st.stop()
+analysed_issues = st.session_state.analysed_issues
 
 # Separate into 3 lists
 in_progress_issues = cached_get_in_progress()
@@ -36,19 +38,19 @@ with tab1:
 
     if feasible_issues:
         for issue in feasible_issues:
-            with st.expander(f"{issue['issue_key']}: {issue['summary']}"):
-                st.markdown(f"**Confidence:** {issue['confidence']}")
-                st.markdown(f"**Complexity Score:** {issue['complexity_score']}")
-                st.markdown(f"**Reasoning:** {issue['reasoning']}")
+            with st.expander(f"{issue["issue_key"]}: {issue["summary"]}"):
+                st.markdown(f"**Confidence:** {issue["confidence"]}")
+                st.markdown(f"**Complexity Score:** {issue["complexity_score"]}")
+                st.markdown(f"**Reasoning:** {issue["reasoning"]}")
 
                 if issue["potential_risks"]:
                     st.warning("**Potential Risks:** " + ", ".join(issue["potential_risks"]))
 
                 if st.button(
-                    f"Select {issue['issue_key']} for processing", key=f"btn-{issue['issue_key']}"
+                    f"Select {issue["issue_key"]} for processing", key=f"btn-{issue["issue_key"]}"
                 ):
-                    with st.spinner(f"Running SQL task for {issue['issue_key']}..."):
-                        st.success(f"{issue['issue_key']} selected for processing.")
+                    with st.spinner(f"Running SQL task for {issue["issue_key"]}..."):
+                        st.success(f"{issue["issue_key"]} selected for processing.")
                         output = services.run_sql_task(issue["issue_key"], issue["summary"])
 
                         if output["status"] == "success":
@@ -66,8 +68,8 @@ with tab1:
                             st.code(output["sql"], language="sql")
                             
                     # Clear Jira status so In Progress tab updates
-                    cached_get_in_progress.clear()
-                    st.rerun()
+                    st.session_state.in_progress_issues = cached_get_in_progress()
+                    
 
     else:
         st.info("No feasible issues found.")
@@ -77,7 +79,7 @@ with tab2:
     non_feasible_issues = [issue for issue in analysed_issues if not issue["feasible"]]
     if non_feasible_issues:
         for issue in non_feasible_issues:
-            with st.expander(f"{issue['issue_key']}: {issue["summary"]}"):
+            with st.expander(f"{issue["issue_key"]}: {issue["summary"]}"):
                 st.markdown(f"**Reasoning:** {issue["reasoning"]}")
                 if issue["missing_information"]:
                     st.info("**Missing Information:** " + ", ".join(issue["missing_information"]))
@@ -88,7 +90,39 @@ with tab2:
 with tab3:
     if in_progress_issues:
         for issue in in_progress_issues:
-            with st.expander(f"{issue['issue_key']}: {issue['summary']}"):
-                st.write("Currently in progress")
+            issue_key = issue["issue_key"]
+            with st.expander(f"{issue_key}: {issue["summary"]}"):
+
+                if f"{issue_key}_sql" not in st.session_state:
+                    st.session_state[f"{issue_key}_sql"] = ""
+                if f"{issue_key}_chat" not in st.session_state:
+                    st.session_state[f"{issue_key}_chat"] = []
+                    jira_comments = services.jira_utils.get_ticket_comments(issue_key)
+                    for comment in jira_comments:
+                        st.session_state[f"{issue_key}_chat"].append({"role": "user", "content": comment["body"]})
+
+
+                if st.session_state[f"{issue_key}_sql"]:
+                    st.markdown("**Current SQL:**")
+                    st.code(st.session_state[f"{issue_key}_sql"], language="sql")
+
+                user_feedback = st.text_area(f"Add feedback / instructions for {issue_key}", key=f"feedback_{issue_key}")
+
+                if st.button(f"Update SQL with feedback", key=f"update_{issue_key}"):
+                    if user_feedback.strip():
+                        st.session_state[f"{issue_key}_chat"].append({"role": "user", "content": user_feedback.strip()})
+                        updated_sql = services.run_updated_sql_with_feedback(
+                        current_sql=st.session_state[f"{issue_key}_sql"],
+                        jira_ticket=issue['summary'],
+                        chat_history=st.session_state[f"{issue_key}_chat"],
+                        max_retries=2
+                    )
+                         
+                        st.session_state[f"{issue_key}_sql"] = updated_sql.sql.strip()
+
+                        # Show results
+                        st.success("SQL updated based on feedback.")
+                        st.code(st.session_state[f"{issue_key}_sql"], language="sql")
+
     else:
         st.info("No issues in progress")
