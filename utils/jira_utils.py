@@ -32,6 +32,23 @@ class JiraUtils:
             logger.error(f"Failed to move {issue_key} to processing: {e}")
 
 
+    def get_ticket_comments(self, issue_key):
+        issue = self.jira.issue(issue_key)
+        comments = self.jira.comments(issue)
+
+        results = [
+            {
+            "id": comment.id,
+            "author": comment.author.displayName,
+            "body": comment.body,
+            "created": comment.created
+            }
+            for comment in comments
+        ]
+
+        return results
+
+
     def post_comment(self, issue_key, comment):
             try:
                 self.jira.add_comment(issue_key, comment)
