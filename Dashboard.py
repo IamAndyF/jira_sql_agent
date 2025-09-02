@@ -51,7 +51,7 @@ with tab1:
                 ):
                     with st.spinner(f"Running SQL task for {issue["issue_key"]}..."):
                         st.success(f"{issue["issue_key"]} selected for processing.")
-                        output = services.run_sql_task(issue["issue_key"], issue["summary"])
+                        output = services.run_sql_task(issue["issue_key"])
 
                         st.session_state.analysed_issues = [
                             i for i in st.session_state.analysed_issues

@@ -95,7 +95,7 @@ class SQLRAGAgent:
     
     @staticmethod
     def validate_sql(query):
-        pattern = re.compile(r'^\s*SELECT\b', re.IGNORECASE)
+        pattern = re.compile(r'^\s*(WITH\b|SELECT\b)', re.IGNORECASE)
         if not pattern.match(query.strip()):
             return False
         
@@ -116,6 +116,7 @@ class SQLRAGAgent:
 
         INSTRUCTIONS:
         - Carefully review the Jira ticket and understand what the ticket requires to be transformed into a SQL query.
+        - THE SQL QUERY GENERATED MUST BE A VALID POSTGRESQL QUERY.
         - Capture **all constraints** mentioned in the ticket (filters, groupings, breakdowns, date ranges, categories, limits).
         - Do NOT hallucinate missing categories.
         - Do NOT include any extra columns.
@@ -145,13 +146,13 @@ class SQLRAGAgent:
 
     def review_sql(self, sql_query):
         prompt = f"""
-        You are an SQL expert for PostgreSQL.
+        You are an SQL expert for PostgreSQL. Your task is to:
 
-        Tasks:
-        1. Only check SQL syntax for PostgreSQL compatibility.
-        2. Ensure correctness, efficiency, and safety (no DROP/DELETE/UPDATE etc.).
-        3. Fix any PostgreSQL-specific issues.
-
+        1. Fix any syntax errors for PostgreSQL.
+        2. Ensure the query is correct, efficient, and safe (no DROP/DELETE/UPDATE statements).
+        3. Make sure it will run successfully in PostgreSQL.
+        4. Only convert subqueries into CTEs if it meaningfully improves readability or simplifies the query.
+        5. Otherwise, keep the query structure as simple as possible.
         SQL query to review: 
         ```sql
         {sql_query}
@@ -181,6 +182,7 @@ class SQLRAGAgent:
         generated_sql_query: SQLResponse = self.generate_sql(formatted_jira_ticket, compact_ctx)
         print(f"Generated SQL: {generated_sql_query.sql.strip()}")
         reviewed_sql_query: ReviewedSQL = self.review_sql(generated_sql_query.sql.strip())
+        print(f"Reviewed SQL: {reviewed_sql_query.sql.strip()}")
         sql_query = reviewed_sql_query.sql.strip()
 
 
