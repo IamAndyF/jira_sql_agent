@@ -83,6 +83,7 @@ class Services:
             {
                 "issue_key": issue.key,
                 "summary": issue.fields.summary,
+                "description": issue.fields.description or "No description"
             }
             for issue in issues
         ]

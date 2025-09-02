@@ -32,7 +32,7 @@ class SQLRAGContext:
         logger.info(f"{len(text_cols)} text-like columns found for indexing.")
         self.value_store.build_index(self.db, text_cols, per_column_limit=per_column_limit)
 
-    def retrieve_relevant_values(self, user_text, k_values = 8, max_cols = 6, max_examples_per_col = 5):
+    def retrieve_relevant_values(self, user_text, k_values=30, max_cols=10, max_examples_per_col=10):
         hits = self.value_store.search_values(user_text, k=k_values)
         grouped = defaultdict(list)
         for doc, score in hits:
@@ -81,6 +81,7 @@ class SQLRAGContext:
         Database tables & columns (compact):
         {schema_summary}
 
+        Sample of data values in tables and columns:
         {chr(10).join(lines)}
         """
     
@@ -115,18 +116,25 @@ class SQLRAGAgent:
 
         INSTRUCTIONS:
         - Carefully review the Jira ticket and understand what the ticket requires to be transformed into a SQL query.
-        - Use the Schema Context to identify relevant tables and columns.
-        - The Schema Context includes example values, these are ONLY examples — do NOT filter on them unless the Jira ticket explicitly asks for that filter.
         - Capture **all constraints** mentioned in the ticket (filters, groupings, breakdowns, date ranges, categories, limits).
-        - If time ranges are mentioned, filter using the correct date column.
-        - Use JOINs if needed to pull in columns from related tables.
         - Do NOT hallucinate missing categories.
         - Do NOT include any extra columns.
         - Do NOT invent columns.
-        - Be precise, but don’t ignore requested details in favor of simplicity.
-        - RETURN ALL rows of data unless specified.
-        
-        Return the sql query as a json object in this format:
+
+        FILTER RULES:
+        - Only apply a filter if the Jira ticket explicitly mentions it.
+        - Do NOT infer filters based solely on column names or example values.
+        - For numeric/date columns, only filter if ticket specifies a range.
+        - Ignore columns that are not relevant to the ticket.
+
+        JOIN RULES:
+        - Use JOINs if needed based on the schema.
+        - Only include columns required by the ticket.
+
+        OUTPUT RULES:
+        - Include exactly the columns requested.
+        - Return all rows unless the ticket specifies otherwise.
+        - Return SQL as a JSON object:
         {{
             "sql" : "SELECT ...FROM ..."
         }}
@@ -140,7 +148,7 @@ class SQLRAGAgent:
         You are an SQL expert for PostgreSQL.
 
         Tasks:
-        1. Check SQL syntax for PostgreSQL compatibility.
+        1. Only check SQL syntax for PostgreSQL compatibility.
         2. Ensure correctness, efficiency, and safety (no DROP/DELETE/UPDATE etc.).
         3. Fix any PostgreSQL-specific issues.
 
@@ -152,7 +160,6 @@ class SQLRAGAgent:
         Return a JSON object:
         {{
             "sql": "SELECT ...",
-            "notes": "what was changed and why"
         }}
         """
 
@@ -163,19 +170,21 @@ class SQLRAGAgent:
     def run(self, jira_ticket):
         retrieved = self.rag_ctx.retrieve_relevant_values(
             f"{jira_ticket}",
-            k_values=10,
-            max_cols=6,
-            max_examples_per_col=5,
+            k_values=30,
+            max_cols=10,
+            max_examples_per_col=10,
         )
 
         formatted_jira_ticket = JiraUtils.format_issue(jira_ticket)
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
 
         generated_sql_query: SQLResponse = self.generate_sql(formatted_jira_ticket, compact_ctx)
+        print(f"Generated SQL: {generated_sql_query.sql.strip()}")
         reviewed_sql_query: ReviewedSQL = self.review_sql(generated_sql_query.sql.strip())
         sql_query = reviewed_sql_query.sql.strip()
-        
-         # Final validation
+
+
+        # Final validation
         if not self.validate_sql(sql_query):
             raise ValueError("Generated SQL is invalid or unsafe.")
         
