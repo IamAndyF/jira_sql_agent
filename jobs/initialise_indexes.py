@@ -7,7 +7,7 @@ from logger import logger
 
 try:
     db_uri = SQLALCHEMY_URL
-    ctx = SQLRAGContext(db_uri, openai_model="gpt-4o-mini")
+    ctx = SQLRAGContext(db_uri, openai_model="gpt-4o")
     # Fetch schema 
     schema_rows = ctx.schema_store.fetch_schema()
     save_to_json(schema_rows, SCHEMA_PATH)
