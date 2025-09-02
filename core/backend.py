@@ -33,7 +33,7 @@ class Services:
         return results
 
 
-    def run_sql_task(self, issue_key, issue_summary):
+    def run_sql_task(self, issue_key):
 
         issue = self.jira_client.issue(issue_key)
         self.jira_utils.assign_to_self(issue_key)
