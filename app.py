@@ -65,21 +65,15 @@ with tab1:
                             if i["issue_key"] != issue["issue_key"]
                         ]
 
-                        cached_get_in_progress.clear()
-                        st.session_state.in_progress_issues = cached_get_in_progress()
-
-                        if output["status"] == "success":
-                            st.code(output["sql"], language="sql")
-                            st.success("SQL task completed successfully.")
-
-                        elif output["status"] == "empty":
-                            st.code(output["sql"], language="sql")
-                            st.warning("Generated SQL returned no results.")
-
-                        elif output["status"] == "invalid":
+                        if output["status"] == "invalid":
                             st.error(
                                 f"SQL validation failed — unsafe or disallowed query blocked."
                             )
+    
+
+                        cached_get_in_progress.clear()
+                        st.session_state.in_progress_issues = cached_get_in_progress()
+
 
                         if output.get("sql"):
                             st.session_state[f"{issue['issue_key']}_sql"] = output[
@@ -142,8 +136,25 @@ with tab3:
                         )
 
                 if st.session_state[f"{issue_key}_sql"]:
-                    st.markdown("**Current SQL:**")
+                    st.markdown("**Generated SQL:**")
                     st.code(st.session_state[f"{issue_key}_sql"], language="sql")
+                
+                if st.button(f"Run query and post to Jira", key=f"run_{issue_key}"):
+                    with st.spinner(f"Executing SQL query..."):
+                        sql_query = st.session_state[f"{issue_key}_sql"]
+                        output = services.execute_sql_and_post(issue_key, sql_query)
+
+                        if output["status"] == "success":
+                            st.code(output["sql"], language="sql")
+                            st.success("SQL task completed successfully.")
+
+                        elif output["status"] == "empty":
+                            st.code(output["sql"], language="sql")
+                            st.warning("Generated SQL returned no results.")
+
+                        
+                        st.success(f"Execution status: {output['status']}")
+
 
                 user_feedback = st.text_area(
                     f"Add feedback / instructions for {issue_key}",
@@ -155,7 +166,7 @@ with tab3:
                         st.session_state[f"{issue_key}_chat"].append(
                             {"role": "user", "content": user_feedback.strip()}
                         )
-                        updated_sql = services.run_updated_sql_with_feedback(
+                        updated_sql = services.get_updated_sql_with_feedback(
                             current_sql=st.session_state[f"{issue_key}_sql"],
                             jira_ticket=issue["summary"],
                             chat_history=st.session_state[f"{issue_key}_chat"],

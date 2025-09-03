@@ -51,6 +51,11 @@ class Services:
         agent = SQLRAGAgent(ctx)
         sql_query = agent.run(issue)
 
+        return sql_query
+    
+    def execute_sql_and_post(self, issue_key, sql_query):
+        issue = self.jira_client.issue(issue_key)
+
         # Execute SQL
         db = Database(SQLALCHEMY_URL)
         with db.get_connection() as conn:
@@ -79,7 +84,7 @@ class Services:
 
         return {"status": "success", "sql": sql_query}
 
-    def run_updated_sql_with_feedback(
+    def get_updated_sql_with_feedback(
         self, current_sql, jira_ticket, chat_history, max_retries
     ):
         return self.sql_agent.update_sql_with_feedback(
