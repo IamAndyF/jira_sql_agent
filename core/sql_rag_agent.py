@@ -105,22 +105,26 @@ class SQLRAGAgent:
         
         return True
     
-    def generate_sql(self, jira_ticket, compact_context):
+    def generate_sql(self, jira_ticket, compact_context, full_schema):
         prompt = f"""
         
         Jira Ticket:
         {jira_ticket}
 
-        Schema Context:
+        Schema Context with example values- (GUIDE — columns likely relevant to this ticket):
         {compact_context}
+
+        Full Schema - (All tables and columns):
+        {full_schema}
 
         INSTRUCTIONS:
         - Carefully review the Jira ticket and understand what the ticket requires to be transformed into a SQL query.
-        - THE SQL QUERY GENERATED MUST BE A VALID POSTGRESQL QUERY.
         - Capture **all constraints** mentioned in the ticket (filters, groupings, breakdowns, date ranges, categories, limits).
-        - Do NOT hallucinate missing categories.
-        - Do NOT include any extra columns.
-        - Do NOT invent columns.
+        - The columns in the 'Relevant columns & sample values' section are **likely relevant** to the Jira ticket.
+        - Use these columns as your **primary guide** when generating the SQL.
+        - You may only use other columns if required for joins or aggregation, and only if they exist in the full schema reference.
+        - Do NOT invent columns or tables not listed in the full schema reference.
+        - Only include columns explicitly requested in the ticket unless necessary for joins/aggregations.
 
         FILTER RULES:
         - Only apply a filter if the Jira ticket explicitly mentions it.
@@ -148,11 +152,13 @@ class SQLRAGAgent:
         prompt = f"""
         You are an SQL expert for PostgreSQL. Your task is to:
 
-        1. Fix any syntax errors for PostgreSQL.
-        2. Ensure the query is correct, efficient, and safe (no DROP/DELETE/UPDATE statements).
-        3. Make sure it will run successfully in PostgreSQL.
-        4. Only convert subqueries into CTEs if it meaningfully improves readability or simplifies the query.
-        5. Otherwise, keep the query structure as simple as possible.
+        - Fix any syntax errors for PostgreSQL.
+        - Ensure the query is correct, efficient, and safe (no DROP/DELETE/UPDATE statements).
+        - Make sure it will run successfully in PostgreSQL.
+        - Only convert subqueries into CTEs if it meaningfully improves readability or simplifies the query.
+        - Otherwise, keep the query structure as simple as possible.
+
+        
         SQL query to review: 
         ```sql
         {sql_query}
@@ -178,11 +184,10 @@ class SQLRAGAgent:
 
         formatted_jira_ticket = JiraUtils.format_issue(jira_ticket)
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
+        full_schema = self.rag_ctx.schema_store.fetch_schema()
 
-        generated_sql_query: SQLResponse = self.generate_sql(formatted_jira_ticket, compact_ctx)
-        print(f"Generated SQL: {generated_sql_query.sql.strip()}")
+        generated_sql_query: SQLResponse = self.generate_sql(formatted_jira_ticket, compact_ctx, full_schema)
         reviewed_sql_query: ReviewedSQL = self.review_sql(generated_sql_query.sql.strip())
-        print(f"Reviewed SQL: {reviewed_sql_query.sql.strip()}")
         sql_query = reviewed_sql_query.sql.strip()
 
 
@@ -200,6 +205,7 @@ class SQLRAGAgent:
 
         Jira ticket summary:
         {jira_ticket}
+        
         Current SQL:
         ```sql
         {current_sql}
@@ -208,11 +214,13 @@ class SQLRAGAgent:
         Feedback and chat history:
         {chat_history}
 
-        Database schema context:
+        Schema Context with example values - (GUIDE — columns likely relevant to this ticket):
         {self.rag_ctx.build_compact_context(self.rag_ctx.retrieve_relevant_values(jira_ticket))}
 
+        Full Schema - (All tables and columns):
+        {self.rag_ctx.schema_store.fetch_schema()}
+
         Rules:
-        - Only generate SELECT queries.
         - Do NOT DROP, DELETE, UPDATE, ALTER, CREATE.
         - Keep all requested columns, filters, and groupings.
         - Provide reasoning before final SQL.

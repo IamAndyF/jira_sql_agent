@@ -13,7 +13,7 @@ services = Services(config)
 
 
 # Fetch in-progress issues from Jira
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=5)   
 def cached_get_in_progress():
     return services.get_in_progress()
 
