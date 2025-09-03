@@ -51,7 +51,7 @@ class Services:
         agent = SQLRAGAgent(ctx)
         sql_query = agent.run(issue)
 
-        return sql_query
+        return {"status": "success", "sql": sql_query}
     
     def execute_sql_and_post(self, issue_key, sql_query):
         issue = self.jira_client.issue(issue_key)
