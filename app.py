@@ -5,16 +5,17 @@ import streamlit as st
 from core.services import Services
 from core.config import Config
 
-st.set_page_config(page_title="Jira SQL Feasibility Dashboard", layout="wide")
-st.title("Jira SQL Feasibility Dashboard")
-st.caption("Automatically checks Jira issues for SQL feasibility using your JiraAgent.")
-
 
 config = Config()
 services = Services(config)
 
+st.set_page_config(page_title="Jira SQL Feasibility Dashboard", layout="wide")
+st.title("Jira SQL Feasibility Dashboard")
+st.caption("Automatically checks Jira issues for SQL feasibility using your JiraAgent.")
+spinner_placeholder = st.empty()
 
-# Fetch in-progress issues from Jira
+
+# Fetch current in-progress issues from Jira
 @st.cache_data(ttl=5)
 def cached_get_in_progress():
     return services.get_in_progress()
@@ -32,6 +33,7 @@ analysed_issues = st.session_state.analysed_issues
 
 # Separate into 3 lists
 in_progress_issues = cached_get_in_progress()
+
 
 tab1, tab2, tab3 = st.tabs(["Feasible", "Not Feasible", "In Progress"])
 
@@ -55,7 +57,7 @@ with tab1:
                     f"Select {issue["issue_key"]} for processing",
                     key=f"btn-{issue["issue_key"]}",
                 ):
-                    with st.spinner(f"Running SQL task for {issue["issue_key"]}..."):
+                    with spinner_placeholder, st.spinner(f"Running SQL task for {issue["issue_key"]}..."):
                         st.success(f"{issue["issue_key"]} selected for processing.")
                         output = services.run_sql_task(issue["issue_key"])
 
@@ -104,8 +106,8 @@ with tab2:
     else:
         st.info("No non-feasible issues found.")
 
-
-with tab3:
+@st.fragment
+def tab3_content(in_progress_issues):
     if in_progress_issues:
         for issue in in_progress_issues:
             issue_key = issue["issue_key"]
@@ -135,9 +137,10 @@ with tab3:
                             {"role": "user", "content": comment["body"]}
                         )
 
+                sql_placeholder = st.empty()
                 if st.session_state[f"{issue_key}_sql"]:
                     st.markdown("**Generated SQL:**")
-                    st.code(st.session_state[f"{issue_key}_sql"], language="sql")
+                    sql_placeholder.code(st.session_state[f"{issue_key}_sql"], language="sql")
                 
                 if st.button(f"Run query and post to Jira", key=f"run_{issue_key}"):
                     with st.spinner(f"Executing SQL query..."):
@@ -145,16 +148,10 @@ with tab3:
                         output = services.execute_sql_and_post(issue_key, sql_query)
 
                         if output["status"] == "success":
-                            st.code(output["sql"], language="sql")
-                            st.success("SQL task completed successfully.")
+                            st.success("SQL query executed successfully and results posted to Jira.")
 
                         elif output["status"] == "empty":
-                            st.code(output["sql"], language="sql")
                             st.warning("Generated SQL returned no results.")
-
-                        
-                        st.success(f"Execution status: {output['status']}")
-
 
                 user_feedback = st.text_area(
                     f"Add feedback / instructions for {issue_key}",
@@ -174,11 +171,11 @@ with tab3:
                         )
 
                         st.session_state[f"{issue_key}_sql"] = updated_sql.sql.strip()
-
-                        # Show results
+                        sql_placeholder.code(st.session_state[f"{issue_key}_sql"], language ="sql")
                         st.success("SQL updated based on feedback.")
-                        st.code(st.session_state[f"{issue_key}_sql"], language="sql")
-                        st.rerun()
 
     else:
         st.info("No issues in progress")
+
+with tab3:
+    tab3_content(cached_get_in_progress())
