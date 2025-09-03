@@ -1,11 +1,11 @@
-
 from collections import defaultdict
-from sqlalchemy import text
 
 from langchain_community.utilities import SQLDatabase
+from sqlalchemy import text
+
 
 class SchemaStore:
-    def __init__(self, db: SQLDatabase, schema = "public"):
+    def __init__(self, db: SQLDatabase, schema="public"):
         self.db = db
         self.schema = schema
 
@@ -28,7 +28,11 @@ class SchemaStore:
         if schema_rows is None:
             schema_rows = self.fetch_schema()
         text_types = {"text", "varchar", "character varying", "char"}
-        return [(r["table"], r["column"]) for r in schema_rows if r["type"].lower() in text_types]
+        return [
+            (r["table"], r["column"])
+            for r in schema_rows
+            if r["type"].lower() in text_types
+        ]
 
     def tables_for_columns(self, cols):
         return sorted({t for t, _ in cols})
@@ -41,7 +45,7 @@ class SchemaStore:
                 by_table[r["table"]].append(f"{r['column']} ({r['type']})")
         summary_lines = []
         for t in sorted(by_table.keys()):
-            cols = ", ".join(by_table[t][:20])  
+            cols = ", ".join(by_table[t][:20])
             if len(by_table[t]) > 20:
                 cols += f", … (+{len(by_table[t])-20} more)"
             summary_lines.append(f"- {t}: {cols}")

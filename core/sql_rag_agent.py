@@ -1,17 +1,19 @@
-from collections import defaultdict
-from pydantic import BaseModel
 import re
+from collections import defaultdict
 
-from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
+
 from core.schema_store import SchemaStore
 from core.vector_store import ValueVectorStore
-from utils.jira_utils import JiraUtils
 from logger import logger
+from utils.jira_utils import JiraUtils
 
 
 class SQLResponse(BaseModel):
     sql: str
+
 
 class ReviewedSQL(BaseModel):
     sql: str
@@ -25,14 +27,18 @@ class SQLRAGContext:
         self.value_store = ValueVectorStore()
         self.llm = ChatOpenAI(model_name=openai_model, temperature=0)
 
-    def initialize_indexes(self, per_column_limit= 200):
+    def initialize_indexes(self, per_column_limit=200):
         schema_rows = self.schema_store.fetch_schema()
         logger.info(f"{len(schema_rows)} columns found in schema.")
         text_cols = self.schema_store.text_like_columns(schema_rows)
         logger.info(f"{len(text_cols)} text-like columns found for indexing.")
-        self.value_store.build_index(self.db, text_cols, per_column_limit=per_column_limit)
+        self.value_store.build_index(
+            self.db, text_cols, per_column_limit=per_column_limit
+        )
 
-    def retrieve_relevant_values(self, user_text, k_values=30, max_cols=10, max_examples_per_col=10):
+    def retrieve_relevant_values(
+        self, user_text, k_values=30, max_cols=10, max_examples_per_col=10
+    ):
         hits = self.value_store.search_values(user_text, k=k_values)
         grouped = defaultdict(list)
         for doc, score in hits:
@@ -44,7 +50,7 @@ class SQLRAGContext:
 
         ranked = {}
         for key, pairs in grouped.items():
-            pairs.sort(key=lambda x: x[0]) 
+            pairs.sort(key=lambda x: x[0])
             examples = []
             seen = set()
             for _, v in pairs:
@@ -64,14 +70,15 @@ class SQLRAGContext:
         top_cols = [kc for kc, _ in col_scores[:max_cols]]
 
         return {kc: ranked[kc] for kc in top_cols if kc in ranked}
-    
 
     def build_compact_context(self, retrieved):
         cols = list(retrieved.keys())
         tables = self.schema_store.tables_for_columns(cols)
         schema_summary = self.schema_store.compact_schema_for_tables(tables)
 
-        lines = ["Relevant columns (with illustrative values — do NOT filter unless explicitly requested in the Jira ticket):"]
+        lines = [
+            "Relevant columns (with illustrative values — do NOT filter unless explicitly requested in the Jira ticket):"
+        ]
         for (table, col), examples in retrieved.items():
             ex_str = ", ".join(examples[:5])
             suffix = "" if len(examples) <= 5 else f" (+{len(examples)-5} more)"
@@ -84,27 +91,36 @@ class SQLRAGContext:
         Sample of data values in tables and columns:
         {chr(10).join(lines)}
         """
-    
-    
+
+
 class SQLRAGAgent:
     def __init__(self, rag_ctx: SQLRAGContext):
         self.rag_ctx = rag_ctx
         self.llm = rag_ctx.llm
         self.generate_llm = self.llm.with_structured_output(SQLResponse)
         self.review_llm = self.llm.with_structured_output(ReviewedSQL)
-    
+
     @staticmethod
     def validate_sql(query):
-        pattern = re.compile(r'^\s*(WITH\b|SELECT\b)', re.IGNORECASE)
+        pattern = re.compile(r"^\s*(WITH\b|SELECT\b)", re.IGNORECASE)
         if not pattern.match(query.strip()):
             return False
-        
-        forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "EXEC", "GRANT"]
+
+        forbidden = [
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "DROP",
+            "ALTER",
+            "CREATE",
+            "EXEC",
+            "GRANT",
+        ]
         if any(word in query.upper() for word in forbidden):
             return False
-        
+
         return True
-    
+
     def generate_sql(self, jira_ticket, compact_context, full_schema):
         prompt = f"""
         
@@ -147,7 +163,6 @@ class SQLRAGAgent:
 
         return self.generate_llm.invoke(prompt)
 
-
     def review_sql(self, sql_query):
         prompt = f"""
         You are an SQL expert for PostgreSQL. Your task is to:
@@ -172,8 +187,6 @@ class SQLRAGAgent:
 
         return self.review_llm.invoke(prompt)
 
-        
-
     def run(self, jira_ticket):
         retrieved = self.rag_ctx.retrieve_relevant_values(
             f"{jira_ticket}",
@@ -186,19 +199,23 @@ class SQLRAGAgent:
         compact_ctx = self.rag_ctx.build_compact_context(retrieved)
         full_schema = self.rag_ctx.schema_store.fetch_schema()
 
-        generated_sql_query: SQLResponse = self.generate_sql(formatted_jira_ticket, compact_ctx, full_schema)
-        reviewed_sql_query: ReviewedSQL = self.review_sql(generated_sql_query.sql.strip())
+        generated_sql_query: SQLResponse = self.generate_sql(
+            formatted_jira_ticket, compact_ctx, full_schema
+        )
+        reviewed_sql_query: ReviewedSQL = self.review_sql(
+            generated_sql_query.sql.strip()
+        )
         sql_query = reviewed_sql_query.sql.strip()
-
 
         # Final validation
         if not self.validate_sql(sql_query):
             raise ValueError("Generated SQL is invalid or unsafe.")
-        
-        return sql_query
-    
 
-    def update_sql_with_feedback(self, current_sql, jira_ticket, chat_history, max_retries):
+        return sql_query
+
+    def update_sql_with_feedback(
+        self, current_sql, jira_ticket, chat_history, max_retries
+    ):
 
         prompt = f"""
         You are an expert SQL assistant in PostgreSQL.
@@ -245,8 +262,10 @@ class SQLRAGAgent:
 
                 logger.info(f"SQL updated for ticket '{jira_ticket}': {notes}")
                 return ReviewedSQL(sql=updated_sql, notes=notes)
-            
+
             except Exception as e:
                 logger.warning(f"Attempt {attempt+1} failed: {e}")
                 if attempt == max_retries:
-                    return ReviewedSQL(sql=current_sql, notes="No changes made due to repeated errors.")
+                    return ReviewedSQL(
+                        sql=current_sql, notes="No changes made due to repeated errors."
+                    )

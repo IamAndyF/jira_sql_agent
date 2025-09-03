@@ -42,6 +42,7 @@ class Config:
         self.jira = JiraConfig()  # Creates jira settings
         self.openai = OpenAIConfig()  # Creates openai settings
 
+
 config = Config()
 
 SQLALCHEMY_URL = config.database.sqlalchemy_connection_string

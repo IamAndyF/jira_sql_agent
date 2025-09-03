@@ -1,9 +1,11 @@
-import openai
 import json
+
+import openai
 from jira import JIRA
 from openai import OpenAIError
-from utils.jira_utils import JiraUtils
+
 from logger import logger
+from utils.jira_utils import JiraUtils
 
 
 class JiraAgent:
@@ -12,7 +14,6 @@ class JiraAgent:
         self.jira_project_key = project_key
         self.openai_api_key = openai_api_key
         self.openai_model = openai_model
-
 
     def analyse_issues(self, issue):
         formatted_issue = JiraUtils.format_issue(issue)
@@ -74,7 +75,7 @@ class JiraAgent:
             Your job is to read Jira tickets and determine if they describe a task
             that involves extracting and/or transforming data from SQL databases.
         """
-        
+
         client = openai.Client(api_key=self.openai_api_key)
 
         try:
@@ -86,7 +87,7 @@ class JiraAgent:
                 ],
                 temperature=0,
                 max_tokens=2000,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
             result = json.loads(response.choices[0].message.content)
             return result
@@ -100,5 +101,5 @@ class JiraAgent:
                 "complexity_score": 0,
                 "reasoning": f"OpenAI API Error: {e}",
                 "missing_information": [],
-                "potential_risks": []
+                "potential_risks": [],
             }
