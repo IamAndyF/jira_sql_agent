@@ -25,7 +25,7 @@ class JiraConfig:
         self.url = os.getenv("JIRA_URL", "")
         self.username = os.getenv("JIRA_USERNAME", "")
         self.jira_api_token = os.getenv("JIRA_API_KEY", "")
-        self.jira_project_key = os.getenv("JIRA_PROJECT_KEY", "dev_proj")
+        self.jira_project_key = os.getenv("JIRA_PROJECT_KEY", "Projects")
 
 
 class OpenAIConfig:
